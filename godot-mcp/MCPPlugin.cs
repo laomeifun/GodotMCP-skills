@@ -15,9 +15,22 @@ public partial class MCPPlugin : EditorPlugin
     {
         SetMeta("MCPPlugin", this);
 
+        // 从环境变量读取端口号，保持与 MCP Server 同步
+        var port = DefaultPort;
+        var envPort = System.Environment.GetEnvironmentVariable("GODOT_MCP_PORT");
+        if (!string.IsNullOrEmpty(envPort) && int.TryParse(envPort, out var parsedPort))
+            port = parsedPort;
+
         _wsServer = new WebSocketServer();
         AddChild(_wsServer);
-        _wsServer.StartServer(DefaultPort);
+        var err = _wsServer.StartServer(port);
+
+        if (err != Error.Ok)
+        {
+            GD.PrintErr("[GodotMCP] ⚠ Plugin enabled but WebSocket server failed to start.");
+            GD.PrintErr("[GodotMCP] MCP tools will not respond until the server is running.");
+            // 即使 WebSocket 失败也继续加载，避免 EditorPlugin 本身崩溃
+        }
 
         _wsServer.ClientConnected += OnClientConnected;
         _wsServer.ClientDisconnected += OnClientDisconnected;
@@ -32,7 +45,7 @@ public partial class MCPPlugin : EditorPlugin
         _router.RegisterHandler("input", new InputHandler(this));
         _router.RegisterHandler("runtime", new RuntimeHandler(this));
 
-        GD.Print("[GodotMCP] Plugin enabled");
+        GD.Print($"[GodotMCP] Plugin enabled (port={port})");
     }
 
     public override void _ExitTree()

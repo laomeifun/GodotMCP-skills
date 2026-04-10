@@ -22,6 +22,11 @@ public abstract class BaseHandler
     {
         var root = GetEditedRoot();
         if (root == null) return null;
+        if (string.IsNullOrWhiteSpace(path)) return root;
+
+        // 规范化：去掉多余斜杠和尾部斜杠
+        path = path.Replace("//", "/").TrimEnd('/');
+
         if (path == "." || path == root.Name) return root;
         if (path.StartsWith("/root/"))
             path = path["/root/".Length..];
@@ -30,6 +35,11 @@ public abstract class BaseHandler
             path = path[rootName.Length..];
         else if (path == root.Name)
             return root;
+
+        // 去除规范化后可能残留的前导斜杠
+        path = path.TrimStart('/');
+        if (string.IsNullOrEmpty(path)) return root;
+
         return root.GetNodeOrNull(path);
     }
 

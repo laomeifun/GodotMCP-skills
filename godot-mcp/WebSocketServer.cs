@@ -30,9 +30,17 @@ public partial class WebSocketServer : Node
     {
         var err = _tcpServer.Listen((ushort)port, "127.0.0.1");
         if (err == Error.Ok)
+        {
             GD.Print($"[GodotMCP] WebSocket server listening on port {port}");
+        }
         else
-            GD.PrintErr($"[GodotMCP] Failed to start server on port {port}: {err}");
+        {
+            GD.PrintErr($"[GodotMCP] ❌ Failed to start WebSocket server on port {port}: {err}");
+            GD.PrintErr("[GodotMCP] Common causes:");
+            GD.PrintErr($"[GodotMCP]   - Port {port} is already in use by another application");
+            GD.PrintErr("[GodotMCP]   - Another Godot editor instance has the MCP plugin enabled");
+            GD.PrintErr("[GodotMCP]   - Try setting a different port via the GODOT_MCP_PORT environment variable");
+        }
         return err;
     }
 

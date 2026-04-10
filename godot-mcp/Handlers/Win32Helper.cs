@@ -7,9 +7,16 @@ namespace GodotMCP.Handlers;
 /// Win32 interop for finding and interacting with the game window.
 /// The Godot game runs as a separate child process, so all interaction
 /// must go through OS-level APIs.
+/// Note: All P/Invoke calls are Windows-only. Use IsWindows to guard calls
+/// on other platforms.
 /// </summary>
 public static class Win32Helper
 {
+    /// <summary>
+    /// Returns true when running on Windows. Use this before any P/Invoke call
+    /// to avoid DllNotFoundException on Linux / macOS.
+    /// </summary>
+    public static bool IsWindows { get; } = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
     // --- Window enumeration ---
 
     public delegate bool EnumWindowsProc(System.IntPtr hWnd, System.IntPtr lParam);

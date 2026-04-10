@@ -58,6 +58,9 @@ public class EditorHandler : BaseHandler
 
     private Dictionary TakeGameScreenshot()
     {
+        if (!Win32Helper.IsWindows)
+            return Error("Game screenshot capture is only supported on Windows (requires Win32 API).");
+
         if (!EditorInterface.Singleton.IsPlayingScene())
             return Error("No game is currently running");
 

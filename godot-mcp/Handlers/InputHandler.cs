@@ -11,6 +11,9 @@ public class InputHandler : BaseHandler
 
     public override Dictionary Handle(string command, Dictionary parms)
     {
+        if (!Win32Helper.IsWindows)
+            return Error("Input simulation is only supported on Windows (requires Win32 SendInput API).");
+
         if (!EditorInterface.Singleton.IsPlayingScene())
             return Error("No game is currently running. Start a scene first with scene_play.");
         return command switch
