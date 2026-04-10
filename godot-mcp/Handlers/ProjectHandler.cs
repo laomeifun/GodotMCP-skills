@@ -1,6 +1,9 @@
 #if TOOLS
 using Godot;
 using Godot.Collections;
+using FileAccess = Godot.FileAccess;
+using DirAccess = Godot.DirAccess;
+using Error = Godot.Error;
 
 namespace GodotMCP.Handlers;
 
@@ -80,7 +83,7 @@ public class ProjectHandler : BaseHandler
         var filter = GetOr(parms,"filter", "").AsString();
         var recursive = GetOr(parms,"recursive", false).AsBool();
 
-        var files = new Array();
+        var files = new Godot.Collections.Array();
         bool truncated = false;
         ListFilesRecursive(path, filter, recursive, files, ref truncated);
         var result = new Dictionary { { "files", files } };
@@ -89,7 +92,7 @@ public class ProjectHandler : BaseHandler
         return Success(result);
     }
 
-    private void ListFilesRecursive(string path, string filter, bool recursive, Array files, ref bool truncated)
+    private void ListFilesRecursive(string path, string filter, bool recursive, Godot.Collections.Array files, ref bool truncated)
     {
         if (files.Count >= MaxFileResults)
         {

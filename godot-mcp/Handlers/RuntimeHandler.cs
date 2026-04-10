@@ -38,7 +38,7 @@ public class RuntimeHandler : BaseHandler
 
         // Game runs as a child process — the editor tree doesn't contain game nodes.
         // Return a compact summary of the editor tree (autoloads only) and explain the limitation.
-        var autoloads = new Array();
+        var autoloads = new Godot.Collections.Array();
         var root = Plugin.GetTree().Root;
         for (int i = 0; i < root.GetChildCount(); i++)
         {
@@ -62,7 +62,7 @@ public class RuntimeHandler : BaseHandler
         var dict = new Dictionary { { "name", node.Name }, { "type", node.GetClass() }, { "path", node.GetPath().ToString() } };
         if (currentDepth < maxDepth && node.GetChildCount() > 0)
         {
-            var children = new Array();
+            var children = new Godot.Collections.Array();
             for (int i = 0; i < node.GetChildCount(); i++)
                 children.Add(BuildRuntimeTree(node.GetChild(i), maxDepth, currentDepth + 1));
             dict["children"] = children;
@@ -115,7 +115,7 @@ public class RuntimeHandler : BaseHandler
         var node = Plugin.GetTree().Root.GetNodeOrNull(nodePath);
         if (node == null) return Error($"Node not found: {nodePath}");
         var value = node.Get(property);
-        var samples = new Array();
+        var samples = new Godot.Collections.Array();
         samples.Add(new Dictionary { { "timestamp_ms", Time.GetTicksMsec() }, { "value", value.ToString() } });
         return Success(new Dictionary
         {

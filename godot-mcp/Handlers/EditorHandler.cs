@@ -2,6 +2,7 @@
 using Godot;
 using Godot.Collections;
 using System.Runtime.InteropServices;
+using Error = Godot.Error;
 
 namespace GodotMCP.Handlers;
 
@@ -9,7 +10,7 @@ using Math = System.Math;
 
 public class EditorHandler : BaseHandler
 {
-    private readonly Array _errorLog = new();
+    private readonly Godot.Collections.Array _errorLog = new();
 
     public EditorHandler(EditorPlugin plugin) : base(plugin) { }
 
@@ -127,7 +128,7 @@ public class EditorHandler : BaseHandler
     private Dictionary GetErrors(Dictionary parms)
     {
         var count = GetOr(parms, "count", 50).AsInt32();
-        var errors = new Array();
+        var errors = new Godot.Collections.Array();
         var startIdx = Math.Max(0, _errorLog.Count - count);
         for (int i = startIdx; i < _errorLog.Count; i++)
             errors.Add(_errorLog[i]);
@@ -167,7 +168,7 @@ public class EditorHandler : BaseHandler
     {
         var scriptEditor = EditorInterface.Singleton.GetScriptEditor();
         var openScripts = scriptEditor.GetOpenScripts();
-        var files = new Array();
+        var files = new Godot.Collections.Array();
         foreach (var script in openScripts)
             files.Add(new Dictionary { { "path", script.ResourcePath }, { "type", script.GetClass() } });
         return Success(new Dictionary { { "files", files }, { "count", files.Count } });

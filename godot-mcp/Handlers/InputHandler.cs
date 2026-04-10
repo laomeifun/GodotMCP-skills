@@ -2,6 +2,7 @@
 using Godot;
 using Godot.Collections;
 using System.Runtime.InteropServices;
+using Error = Godot.Error;
 
 namespace GodotMCP.Handlers;
 

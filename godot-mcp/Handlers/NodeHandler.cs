@@ -1,6 +1,7 @@
 #if TOOLS
 using Godot;
 using Godot.Collections;
+using Error = Godot.Error;
 
 namespace GodotMCP.Handlers;
 
@@ -156,7 +157,7 @@ public class NodeHandler : BaseHandler
         var nodePath = parms["node_path"].AsString();
         var node = FindNode(nodePath);
         if (node == null) return Error($"Node not found: {nodePath}");
-        var signals = new Array();
+        var signals = new Godot.Collections.Array();
         foreach (var sigDict in node.GetSignalList())
         {
             signals.Add(new Dictionary { { "name", sigDict["name"] }, { "args", GetOr(sigDict, "args", new Godot.Collections.Array()) } });
@@ -200,7 +201,7 @@ public class NodeHandler : BaseHandler
         var nodePath = parms["node_path"].AsString();
         var node = FindNode(nodePath);
         if (node == null) return Error($"Node not found: {nodePath}");
-        var children = new Array();
+        var children = new Godot.Collections.Array();
         for (int i = 0; i < node.GetChildCount(); i++)
         {
             var child = node.GetChild(i);

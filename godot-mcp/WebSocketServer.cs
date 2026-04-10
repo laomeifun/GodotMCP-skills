@@ -2,6 +2,7 @@
 using Godot;
 using System.Collections.Generic;
 using System.Text;
+using Error = Godot.Error;
 
 namespace GodotMCP;
 
@@ -20,8 +21,8 @@ public partial class WebSocketServer : Node
 
     private class PendingPeer
     {
-        public StreamPeerTcp Tcp { get; set; }
-        public WebSocketPeer Ws { get; set; }
+        public StreamPeerTcp Tcp { get; set; } = null!;
+        public WebSocketPeer? Ws { get; set; }
         public int Id { get; set; }
         public ulong ConnectTime { get; set; }
     }

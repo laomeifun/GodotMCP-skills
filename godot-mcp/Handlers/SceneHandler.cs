@@ -1,6 +1,9 @@
 #if TOOLS
 using Godot;
 using Godot.Collections;
+using FileAccess = Godot.FileAccess;
+using DirAccess = Godot.DirAccess;
+using Error = Godot.Error;
 
 namespace GodotMCP.Handlers;
 
@@ -139,7 +142,7 @@ public class SceneHandler : BaseHandler
         var dict = new Dictionary { { "name", node.Name }, { "type", node.GetClass() } };
         if (node.GetChildCount() > 0)
         {
-            var children = new Array();
+            var children = new Godot.Collections.Array();
             for (int i = 0; i < node.GetChildCount(); i++)
                 children.Add(BuildTreeDict(node.GetChild(i)));
             dict["children"] = children;

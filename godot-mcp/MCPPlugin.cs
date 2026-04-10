@@ -1,6 +1,7 @@
 #if TOOLS
 using Godot;
 using GodotMCP.Handlers;
+using Error = Godot.Error;
 
 namespace GodotMCP;
 
@@ -8,8 +9,8 @@ namespace GodotMCP;
 public partial class MCPPlugin : EditorPlugin
 {
     private const int DefaultPort = 6550;
-    private WebSocketServer _wsServer;
-    private CommandRouter _router;
+    private WebSocketServer? _wsServer;
+    private CommandRouter? _router;
 
     public override void _EnterTree()
     {

@@ -1,6 +1,8 @@
 #if TOOLS
 using Godot;
 using Godot.Collections;
+using FileAccess = Godot.FileAccess;
+using DirAccess = Godot.DirAccess;
 
 namespace GodotMCP.Handlers;
 
@@ -26,12 +28,12 @@ public class ScriptHandler : BaseHandler
     {
         var path = GetOr(parms,"path", "res://").AsString();
         var language = GetOr(parms,"language", "all").AsString();
-        var scripts = new Array();
+        var scripts = new Godot.Collections.Array();
         CollectScripts(path, language, scripts);
         return Success(new Dictionary { { "scripts", scripts }, { "count", scripts.Count } });
     }
 
-    private void CollectScripts(string path, string language, Array scripts)
+    private void CollectScripts(string path, string language, Godot.Collections.Array scripts)
     {
         var dir = DirAccess.Open(path);
         if (dir == null) return;
