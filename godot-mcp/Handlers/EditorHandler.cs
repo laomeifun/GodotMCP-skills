@@ -2,6 +2,7 @@
 using Godot;
 using Godot.Collections;
 using System;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
@@ -143,6 +144,44 @@ public class EditorHandler : BaseHandler
             SharedLog.RemoveAt(0);
     }
 
+    public static bool TryGetRecentCompilationErrorSummary(out string summary, int maxDiagnostics = 3)
+    {
+        summary = string.Empty;
+        if (SharedLog.Count == 0 || maxDiagnostics <= 0)
+            return false;
+
+        var diagnostics = CollectCompilationDiagnostics(SharedLog, "cs");
+        if (diagnostics.Count == 0)
+            return false;
+
+        var parts = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = diagnostics.Count - 1; i >= 0 && parts.Count < maxDiagnostics; i--)
+        {
+            if (diagnostics[i].VariantType != Variant.Type.Dictionary)
+                continue;
+
+            var diagnostic = diagnostics[i].AsGodotDictionary();
+            if (diagnostic.TryGetValue("severity", out var severityVariant) &&
+                !string.Equals(severityVariant.AsString(), "error", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var formatted = FormatCompilationDiagnosticSummary(diagnostic);
+            if (string.IsNullOrWhiteSpace(formatted) || !seen.Add(formatted))
+                continue;
+
+            parts.Add(formatted);
+        }
+
+        if (parts.Count == 0)
+            return false;
+
+        summary = string.Join(" | ", parts);
+        return true;
+    }
+
     private Dictionary ExecuteGdScript(Dictionary parms)
     {
         var code = parms["code"].AsString();
@@ -239,6 +278,25 @@ public class EditorHandler : BaseHandler
         }
 
         return count;
+    }
+
+    private static string FormatCompilationDiagnosticSummary(Dictionary diagnostic)
+    {
+        var path = diagnostic.TryGetValue("path", out var pathVariant) ? pathVariant.AsString() : string.Empty;
+        var line = diagnostic.TryGetValue("line", out var lineVariant) ? lineVariant.AsInt32() : -1;
+        var code = diagnostic.TryGetValue("code", out var codeVariant) ? codeVariant.AsString() : string.Empty;
+        var message = diagnostic.TryGetValue("message", out var messageVariant) ? messageVariant.AsString() : string.Empty;
+
+        if (string.IsNullOrWhiteSpace(message))
+            return string.Empty;
+
+        var location = string.IsNullOrWhiteSpace(path)
+            ? "C# build"
+            : line > 0 ? $"{path}:{line}" : path;
+
+        return string.IsNullOrWhiteSpace(code)
+            ? $"{location}: {message}"
+            : $"{location} {code}: {message}";
     }
 
     private static Dictionary? TryBuildCompilationDiagnostic(Dictionary entry)

@@ -11,6 +11,7 @@ public partial class MCPPlugin : EditorPlugin
 {
     private const int DefaultPort = 6550;
     private const ulong AutoloadRetryIntervalMs = 2000;
+    private const ulong AutoloadBlockerLogIntervalMs = 30000;
     private WebSocketServer? _wsServer;
     private CommandRouter? _router;
     private RuntimeBridgeDebuggerPlugin? _runtimeDebuggerPlugin;
@@ -132,24 +133,26 @@ public partial class MCPPlugin : EditorPlugin
             return false;
         }
 
-        if (!script.CanInstantiate())
+        if (!HasCSharpSolutionFiles())
         {
-            blocker = BuildAutoloadCompilationHelpMessage();
+            blocker = $"Runtime bridge autoload script {RuntimeBridgeProtocol.AutoloadPath} is not instantiable because this project does not appear to have a C# solution yet. Create any C# script to generate the .csproj/.sln, build the project, then re-enable the plugin.";
+            return false;
+        }
+
+        // NOTE:
+        // For C# runtime-only scripts, querying Script.CanInstantiate() from the editor can
+        // report false even when the project has compiled successfully and the autoload can be
+        // registered for the running game. Using CanInstantiate() here caused false negatives
+        // on real projects, so we only block on missing C# solution files or known compilation
+        // errors and then let AddAutoloadSingleton() be the final source of truth.
+        if (EditorHandler.TryGetRecentCompilationErrorSummary(out var diagnosticSummary))
+        {
+            blocker = $"Runtime bridge autoload script {RuntimeBridgeProtocol.AutoloadPath} is blocked by recent C# compilation errors: {diagnosticSummary}. Fix those errors, build the project again, then reload the project or wait for the plugin to retry automatically.";
             return false;
         }
 
         blocker = string.Empty;
         return true;
-    }
-
-    private string BuildAutoloadCompilationHelpMessage()
-    {
-        if (!HasCSharpSolutionFiles())
-        {
-            return $"Runtime bridge autoload script {RuntimeBridgeProtocol.AutoloadPath} is not instantiable because this project does not appear to have a C# solution yet. Create any C# script to generate the .csproj/.sln, build the project, then re-enable the plugin.";
-        }
-
-        return $"Runtime bridge autoload script {RuntimeBridgeProtocol.AutoloadPath} is not instantiable yet. Build the C# project first, make sure your .csproj includes addons/godot-mcp/**/*.cs, and verify you are using Godot .NET 4.6+.";
     }
 
     private static bool HasCSharpSolutionFiles()
@@ -174,7 +177,7 @@ public partial class MCPPlugin : EditorPlugin
     {
         var now = Time.GetTicksMsec();
         if (string.Equals(blocker, _lastAutoloadInstallBlocker, StringComparison.Ordinal) &&
-            now - _lastAutoloadBlockerLogMs < AutoloadRetryIntervalMs)
+            now - _lastAutoloadBlockerLogMs < AutoloadBlockerLogIntervalMs)
         {
             return;
         }

@@ -26,7 +26,15 @@ your-project/
       plugin.cfg
 ```
 
-Then enable the plugin in **Project > Project Settings > Plugins** — check **Godot MCP**.
+Before enabling the plugin:
+
+1. Make sure the project already has a generated `.csproj` / `.sln` (if not, create any C# script in Godot once).
+2. Confirm your `.csproj` does **not** exclude `addons/godot-mcp/**/*.cs`.
+3. Click the Godot **Build** button once and make sure C# compilation succeeds.
+
+Only then enable the plugin in **Project > Project Settings > Plugins** — check **Godot MCP**.
+
+> If you enable it before the first successful C# build, Godot can report that `res://addons/godot-mcp/RuntimeBridgeAutoload.cs` is “not instantiable yet”. The detailed setup steps and troubleshooting notes live in `INSTALL.md`.
 
 ### 2. Build the MCP Server
 

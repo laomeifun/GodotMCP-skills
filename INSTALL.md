@@ -139,16 +139,17 @@ npm run build
 - 项目还没有生成 C# 解决方案（缺少 `.csproj` / `.sln`）
 - 你复制了新版插件，但项目的 `.csproj` 仍显式排除了 `addons/godot-mcp/**/*.cs`
 - 还没先在 Godot 里 **Build** 一次 C# 项目
+- 你的项目里有其他 C# 脚本或其他 addon 脚本编译失败，导致整个程序集还没成功生成
 - 使用的 Godot 版本低于插件当前要求的 **Godot .NET 4.6+**
 
 **排查步骤**：
 1. 确认项目根目录里已经有 `.csproj` 或 `.sln`；如果没有，先创建任意一个 C# 脚本让 Godot 生成
 2. 打开 `.csproj`，确认没有排除 `addons/godot-mcp/**/*.cs`
-3. 在 Godot 编辑器里点击底部 **Build**，确保 C# 编译通过
+3. 在 Godot 编辑器里点击底部 **Build**，确保 C# 编译通过；如果失败，优先修复 **第一个** C# 编译错误（哪怕它不在 `RuntimeBridgeAutoload.cs` 里）
 4. 如果刚升级过插件，建议 **Project > Reload Current Project** 或重开 Godot
 5. 确认你使用的是 **Godot .NET 4.6+**
 
-**补充说明**：新版插件在检测到这类情况时，会先输出更明确的提示，而不是反复直接尝试创建 autoload。
+**补充说明**：新版插件在检测到这类情况时，会先输出更明确的提示；如果同一条 warning 重复出现，通常只是插件在后台自动重试安装 runtime autoload，真正需要关注的仍然是底部 **Build / Output** 面板里最早出现的 C# 编译错误。
 
 ### ❌ 端口 6550 被占用
 
