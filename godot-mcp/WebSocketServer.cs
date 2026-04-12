@@ -2,6 +2,7 @@
 using Godot;
 using System.Collections.Generic;
 using System.Text;
+using GodotMCP.Handlers;
 using Error = Godot.Error;
 
 namespace GodotMCP;
@@ -33,6 +34,7 @@ public partial class WebSocketServer : Node
         if (err == Error.Ok)
         {
             GD.Print($"[GodotMCP] WebSocket server listening on port {port}");
+            EditorHandler.RecordLog($"WebSocket server listening on port {port}", "info", nameof(WebSocketServer));
         }
         else
         {
@@ -41,6 +43,7 @@ public partial class WebSocketServer : Node
             GD.PrintErr($"[GodotMCP]   - Port {port} is already in use by another application");
             GD.PrintErr("[GodotMCP]   - Another Godot editor instance has the MCP plugin enabled");
             GD.PrintErr("[GodotMCP]   - Try setting a different port via the GODOT_MCP_PORT environment variable");
+            EditorHandler.RecordLog($"Failed to start WebSocket server on port {port}: {err}", "error", nameof(WebSocketServer));
         }
         return err;
     }
@@ -53,6 +56,7 @@ public partial class WebSocketServer : Node
         _pendingPeers.Clear();
         _tcpServer.Stop();
         GD.Print("[GodotMCP] WebSocket server stopped");
+        EditorHandler.RecordLog("WebSocket server stopped", "info", nameof(WebSocketServer));
     }
 
     public bool IsActive() => _tcpServer.IsListening();
@@ -80,7 +84,10 @@ public partial class WebSocketServer : Node
             if (ProcessPendingPeer(p))
                 toRemove.Add(p);
             else if (Time.GetTicksMsec() - p.ConnectTime > (ulong)_handshakeTimeoutMs)
+            {
+                EditorHandler.RecordLog($"Handshake timed out for pending client {p.Id}", "warning", nameof(WebSocketServer));
                 toRemove.Add(p);
+            }
         }
         foreach (var r in toRemove)
             _pendingPeers.Remove(r);

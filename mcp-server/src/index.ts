@@ -11,6 +11,8 @@ import "./tools/script.js";
 import "./tools/editor.js";
 import "./tools/input.js";
 import "./tools/runtime.js";
+import "./resources.js";
+import "./prompts.js";
 
 async function main() {
   const transport = new StdioServerTransport();

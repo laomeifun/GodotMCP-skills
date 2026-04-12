@@ -1,8 +1,9 @@
 #if TOOLS
 using Godot;
 using Godot.Collections;
-using System.Runtime.InteropServices;
-using Error = Godot.Error;
+using System;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 namespace GodotMCP.Handlers;
 
@@ -10,7 +11,8 @@ using Math = System.Math;
 
 public class EditorHandler : BaseHandler
 {
-    private readonly Godot.Collections.Array _errorLog = new();
+    private static readonly Godot.Collections.Array SharedLog = new();
+    private const int MaxLogEntries = 500;
 
     public EditorHandler(EditorPlugin plugin) : base(plugin) { }
 
@@ -19,14 +21,24 @@ public class EditorHandler : BaseHandler
         return command switch
         {
             "screenshot" => TakeScreenshot(parms),
-            "game_screenshot" => TakeGameScreenshot(),
             "get_errors" => GetErrors(parms),
+            "get_compilation_errors" => GetCompilationErrors(parms),
             "execute_gdscript" => ExecuteGdScript(parms),
             "execute_csharp" => ExecuteCSharp(parms),
             "reload_project" => ReloadProject(),
             "get_open_files" => GetOpenFiles(),
             "open_file" => OpenFile(parms),
+            "game_screenshot" => Error("Editor command 'game_screenshot' requires async routing."),
             _ => Error($"Unknown editor command: {command}")
+        };
+    }
+
+    public override async Task<Dictionary> HandleAsync(string command, Dictionary parms)
+    {
+        return command switch
+        {
+            "game_screenshot" => await TakeGameScreenshotAsync(),
+            _ => await base.HandleAsync(command, parms),
         };
     }
 
@@ -57,88 +69,78 @@ public class EditorHandler : BaseHandler
         return Success(new Dictionary { { "path", savePath }, { "format", "jpeg" } });
     }
 
-    private Dictionary TakeGameScreenshot()
+    private async Task<Dictionary> TakeGameScreenshotAsync()
     {
-        if (!Win32Helper.IsWindows)
-            return Error("Game screenshot capture is only supported on Windows (requires Win32 API).");
-
         if (!EditorInterface.Singleton.IsPlayingScene())
             return Error("No game is currently running");
 
-        var projectName = ProjectSettings.GetSetting("application/config/name").AsString();
-        if (string.IsNullOrEmpty(projectName)) projectName = "Godot";
-        var editorPid = (uint)OS.GetProcessId();
-
-        var gameHwnd = Win32Helper.FindGameWindow(projectName, editorPid);
-        if (gameHwnd == System.IntPtr.Zero)
-            return Error($"Could not find game window (looking for '{projectName}'). Make sure the game is running and visible.");
-
-        // Capture the game window using PrintWindow
-        Win32Helper.GetClientRect(gameHwnd, out var rect);
-        int width = rect.Right - rect.Left;
-        int height = rect.Bottom - rect.Top;
-        if (width <= 0 || height <= 0)
-            return Error("Game window has zero size");
-
-        var hdcWindow = Win32Helper.GetDC(gameHwnd);
-        var hdcMem = Win32Helper.CreateCompatibleDC(hdcWindow);
-        var hBitmap = Win32Helper.CreateCompatibleBitmap(hdcWindow, width, height);
-        var hOld = Win32Helper.SelectObject(hdcMem, hBitmap);
-
-        Win32Helper.PrintWindow(gameHwnd, hdcMem, Win32Helper.PW_RENDERFULLCONTENT);
-
-        // Read pixel data from the bitmap
-        var bmi = new Win32Helper.BITMAPINFO();
-        bmi.bmiHeader.biSize = (uint)Marshal.SizeOf<Win32Helper.BITMAPINFOHEADER>();
-        bmi.bmiHeader.biWidth = width;
-        bmi.bmiHeader.biHeight = -height; // top-down
-        bmi.bmiHeader.biPlanes = 1;
-        bmi.bmiHeader.biBitCount = 32;
-        bmi.bmiHeader.biCompression = 0;
-
-        var pixelData = new byte[width * height * 4];
-        Win32Helper.GetDIBits(hdcMem, hBitmap, 0, (uint)height, pixelData, ref bmi, 0);
-
-        // Cleanup GDI objects
-        Win32Helper.SelectObject(hdcMem, hOld);
-        Win32Helper.DeleteObject(hBitmap);
-        Win32Helper.DeleteDC(hdcMem);
-        Win32Helper.ReleaseDC(gameHwnd, hdcWindow);
-
-        // Convert BGRA → RGBA for Godot
-        for (int i = 0; i < pixelData.Length; i += 4)
-            (pixelData[i], pixelData[i + 2]) = (pixelData[i + 2], pixelData[i]);
-
-        var image = Image.CreateFromData(width, height, false, Image.Format.Rgba8, pixelData);
-        if (image == null || image.IsEmpty())
-            return Error("Failed to create image from captured window data");
-
-        if (image.GetWidth() > MaxScreenshotWidth)
-        {
-            var scale = (float)MaxScreenshotWidth / image.GetWidth();
-            image.Resize((int)(image.GetWidth() * scale), (int)(image.GetHeight() * scale));
-        }
-
-        var savePath = ProjectSettings.GlobalizePath($"user://mcp_game_screenshot_{Time.GetTicksMsec()}.jpg");
-        var err = image.SaveJpg(savePath, 0.85f);
-        if (err != Godot.Error.Ok) return Error($"Failed to save game screenshot: {err}");
-        return Success(new Dictionary { { "path", savePath }, { "format", "jpeg" }, { "width", width }, { "height", height } });
+        return Success(await RuntimeBridgeService.Instance.RequestAsync(RuntimeBridgeProtocol.CommandCaptureScreenshot, new Dictionary(), 5000));
     }
 
     private Dictionary GetErrors(Dictionary parms)
     {
         var count = GetOr(parms, "count", 50).AsInt32();
         var errors = new Godot.Collections.Array();
-        var startIdx = Math.Max(0, _errorLog.Count - count);
-        for (int i = startIdx; i < _errorLog.Count; i++)
-            errors.Add(_errorLog[i]);
-        return Success(new Dictionary { { "errors", errors }, { "count", errors.Count } });
+        var startIdx = Math.Max(0, SharedLog.Count - count);
+        for (int i = startIdx; i < SharedLog.Count; i++)
+            errors.Add(SharedLog[i]);
+
+        var diagnostics = CollectCompilationDiagnostics(errors, string.Empty);
+        return Success(new Dictionary
+        {
+            { "errors", errors },
+            { "count", errors.Count },
+            { "compilation_errors", diagnostics },
+            { "compilation_error_count", CountDiagnosticsBySeverity(diagnostics, "error") },
+            { "compilation_warning_count", CountDiagnosticsBySeverity(diagnostics, "warning") },
+        });
     }
 
-    public void LogError(string message, string type = "error")
+    private Dictionary GetCompilationErrors(Dictionary parms)
     {
-        _errorLog.Add(new Dictionary { { "message", message }, { "type", type }, { "timestamp", Time.GetTicksMsec() } });
-        while (_errorLog.Count > 500) _errorLog.RemoveAt(0);
+        var count = GetOr(parms, "count", 100).AsInt32();
+        var language = GetOr(parms, "language", string.Empty).AsString();
+        var errors = new Godot.Collections.Array();
+        var startIdx = Math.Max(0, SharedLog.Count - count);
+        for (int i = startIdx; i < SharedLog.Count; i++)
+            errors.Add(SharedLog[i]);
+
+        var diagnostics = CollectCompilationDiagnostics(errors, language);
+        return Success(new Dictionary
+        {
+            { "diagnostics", diagnostics },
+            { "count", diagnostics.Count },
+            { "error_count", CountDiagnosticsBySeverity(diagnostics, "error") },
+            { "warning_count", CountDiagnosticsBySeverity(diagnostics, "warning") },
+        });
+    }
+
+    public static void RecordLog(string message, string type = "error", string source = "editor", string code = "", Dictionary? context = null)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return;
+
+        var entry = new Dictionary
+        {
+            { "message", message },
+            { "type", type },
+            { "source", source },
+            { "timestamp_ms", Time.GetTicksMsec() }
+        };
+
+        if (!string.IsNullOrWhiteSpace(code))
+            entry["code"] = code;
+        if (context != null && context.Count > 0)
+            entry["context"] = context;
+
+        var diagnostic = TryBuildCompilationDiagnostic(entry);
+        if (diagnostic != null)
+            entry["compilation_diagnostic"] = diagnostic;
+
+        SharedLog.Add(entry);
+
+        while (SharedLog.Count > MaxLogEntries)
+            SharedLog.RemoveAt(0);
     }
 
     private Dictionary ExecuteGdScript(Dictionary parms)
@@ -176,7 +178,9 @@ public class EditorHandler : BaseHandler
 
     private Dictionary OpenFile(Dictionary parms)
     {
-        var path = parms["path"].AsString();
+        var pathError = ValidateProjectPath(parms["path"].AsString(), out var path, "path");
+        if (pathError != null) return pathError;
+
         var line = GetOr(parms, "line", 0).AsInt32();
         var script = ResourceLoader.Load<Script>(path);
         if (script != null)
@@ -186,6 +190,124 @@ public class EditorHandler : BaseHandler
         }
         EditorInterface.Singleton.OpenSceneFromPath(path);
         return Success(new Dictionary { { "path", path } });
+    }
+
+    private static Godot.Collections.Array CollectCompilationDiagnostics(Godot.Collections.Array entries, string language)
+    {
+        var diagnostics = new Godot.Collections.Array();
+        foreach (var entryVariant in entries)
+        {
+            if (entryVariant.VariantType != Variant.Type.Dictionary)
+                continue;
+
+            var entry = entryVariant.AsGodotDictionary();
+            Dictionary? diagnostic = null;
+            if (entry.TryGetValue("compilation_diagnostic", out var diagnosticVariant) && diagnosticVariant.VariantType == Variant.Type.Dictionary)
+                diagnostic = diagnosticVariant.AsGodotDictionary();
+            else
+                diagnostic = TryBuildCompilationDiagnostic(entry);
+
+            if (diagnostic == null)
+                continue;
+            if (!string.IsNullOrWhiteSpace(language) &&
+                diagnostic.TryGetValue("language", out var languageVariant) &&
+                !string.Equals(languageVariant.AsString(), language, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            diagnostics.Add(diagnostic);
+        }
+
+        return diagnostics;
+    }
+
+    private static int CountDiagnosticsBySeverity(Godot.Collections.Array diagnostics, string severity)
+    {
+        int count = 0;
+        foreach (var diagnosticVariant in diagnostics)
+        {
+            if (diagnosticVariant.VariantType != Variant.Type.Dictionary)
+                continue;
+
+            var diagnostic = diagnosticVariant.AsGodotDictionary();
+            if (diagnostic.TryGetValue("severity", out var severityVariant) &&
+                string.Equals(severityVariant.AsString(), severity, StringComparison.OrdinalIgnoreCase))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static Dictionary? TryBuildCompilationDiagnostic(Dictionary entry)
+    {
+        var message = entry.TryGetValue("message", out var messageVariant) ? messageVariant.AsString() : string.Empty;
+        var type = entry.TryGetValue("type", out var typeVariant) ? typeVariant.AsString() : "error";
+        var source = entry.TryGetValue("source", out var sourceVariant) ? sourceVariant.AsString() : "editor";
+        var code = entry.TryGetValue("code", out var codeVariant) ? codeVariant.AsString() : string.Empty;
+
+        if (string.IsNullOrWhiteSpace(message))
+            return null;
+
+        var csharpPattern = new Regex(@"(?<path>(?:res|user)://[^\(\s]+)\((?<line>\d+),(?<column>\d+)\):\s*(?<severity>error|warning)\s*(?<code>[A-Za-z]{1,4}\d+)?\s*:?\s*(?<message>.+)", RegexOptions.IgnoreCase);
+        var genericPattern = new Regex(@"(?<path>(?:res|user)://[^:\s]+):(?<line>\d+)(?::(?<column>\d+))?:\s*(?<severity>error|warning)\s*:?\s*(?<message>.+)", RegexOptions.IgnoreCase);
+
+        Match match;
+        string language = InferLanguageFromPath(message);
+        if (csharpPattern.IsMatch(message))
+        {
+            match = csharpPattern.Match(message);
+            language = "cs";
+        }
+        else if (genericPattern.IsMatch(message))
+        {
+            match = genericPattern.Match(message);
+        }
+        else if (message.Contains("CS", StringComparison.OrdinalIgnoreCase) || source.Contains("csharp", StringComparison.OrdinalIgnoreCase))
+        {
+            return new Dictionary
+            {
+                { "path", string.Empty },
+                { "line", -1 },
+                { "column", -1 },
+                { "severity", type },
+                { "code", code },
+                { "message", message },
+                { "language", string.IsNullOrWhiteSpace(language) ? "cs" : language },
+                { "source", source },
+                { "timestamp_ms", entry.TryGetValue("timestamp_ms", out var ts) ? ts : Time.GetTicksMsec() },
+            };
+        }
+        else
+        {
+            return null;
+        }
+
+        return new Dictionary
+        {
+            { "path", match.Groups["path"].Value },
+            { "line", ParseOrDefault(match.Groups["line"].Value, -1) },
+            { "column", ParseOrDefault(match.Groups["column"].Value, -1) },
+            { "severity", match.Groups["severity"].Success ? match.Groups["severity"].Value.ToLowerInvariant() : type },
+            { "code", match.Groups["code"].Success && !string.IsNullOrWhiteSpace(match.Groups["code"].Value) ? match.Groups["code"].Value : code },
+            { "message", match.Groups["message"].Success ? match.Groups["message"].Value : message },
+            { "language", string.IsNullOrWhiteSpace(language) ? InferLanguageFromPath(match.Groups["path"].Value) : language },
+            { "source", source },
+            { "timestamp_ms", entry.TryGetValue("timestamp_ms", out var timestamp) ? timestamp : Time.GetTicksMsec() },
+        };
+    }
+
+    private static int ParseOrDefault(string value, int fallback) => int.TryParse(value, out var parsed) ? parsed : fallback;
+
+    private static string InferLanguageFromPath(string text)
+    {
+        if (text.Contains(".cs", StringComparison.OrdinalIgnoreCase))
+            return "cs";
+        if (text.Contains(".gd", StringComparison.OrdinalIgnoreCase))
+            return "gd";
+        return string.Empty;
     }
 }
 #endif

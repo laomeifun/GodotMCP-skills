@@ -9,7 +9,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "prepare": "tsc"
+    "prepare": "tsc",
+    "test": "npm run build && node --test build/godot-connection.test.js build/errors.test.js build/server.test.js",
+    "test:watch": "node --test --watch build/godot-connection.test.js build/errors.test.js build/server.test.js"
   },
   "files": ["build"],
   "dependencies": {
