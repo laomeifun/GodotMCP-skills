@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { z } from "zod";
 import { GodotCommandError } from "./errors.js";
-import { buildImageResponseFromPath, executeGodotCommand, godot } from "./server.js";
+import { buildImageResponseFromPath, executeGodotCommand, godot, server } from "./server.js";
 
 type MockSend = typeof godot.send;
 
@@ -175,4 +175,24 @@ test("buildImageResponseFromPath reads screenshot bytes and infers mime type", a
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
+});
+
+test("server configures task infrastructure for task-capable tools", () => {
+  const internalServer = server.server as unknown as {
+    _taskStore?: unknown;
+    _taskMessageQueue?: unknown;
+    getCapabilities?: () => {
+      tasks?: {
+        requests?: {
+          tools?: {
+            call?: Record<string, never>;
+          };
+        };
+      };
+    };
+  };
+
+  assert.ok(internalServer._taskStore);
+  assert.ok(internalServer._taskMessageQueue);
+  assert.ok(internalServer.getCapabilities?.().tasks?.requests?.tools?.call);
 });

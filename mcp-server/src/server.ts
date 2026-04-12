@@ -1,5 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import {
+  InMemoryTaskMessageQueue,
+  InMemoryTaskStore,
+} from "@modelcontextprotocol/sdk/experimental/tasks";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { z, ZodRawShape } from "zod";
 import { formatToolErrorText, normalizeToolError } from "./errors.js";
@@ -15,9 +19,26 @@ export const godot = new GodotConnection(
   parseInt(process.env.GODOT_MCP_HEARTBEAT_TIMEOUT || "4000", 10),
 );
 
+const taskStore = new InMemoryTaskStore();
+const taskMessageQueue = new InMemoryTaskMessageQueue();
+
 export const server = new McpServer({
   name: "godot-mcp-server",
   version: "0.1.0",
+}, {
+  capabilities: {
+    tasks: {
+      list: {},
+      cancel: {},
+      requests: {
+        tools: {
+          call: {},
+        },
+      },
+    },
+  },
+  taskStore,
+  taskMessageQueue,
 });
 
 type TextContent = {
