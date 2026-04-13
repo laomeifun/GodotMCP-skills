@@ -197,28 +197,7 @@ public class ProjectHandler : BaseHandler
         return Success(new Dictionary { { "path", path } });
     }
 
-    private Dictionary GetUid(Dictionary parms)
-    {
-        var pathError = ValidateProjectPath(parms["path"].AsString(), out var path, "path");
-        if (pathError != null) return pathError;
 
-        var uid = ResourceLoader.GetResourceUid(path);
-        if (uid == -1)
-            return Error($"No UID found for: {path}");
-        return Success(new Dictionary { { "uid", ResourceUid.IdToText(uid) }, { "path", path } });
-    }
-
-    private Dictionary GetPathFromUid(Dictionary parms)
-    {
-        var uidStr = parms["uid"].AsString();
-        var uid = ResourceUid.TextToId(uidStr);
-        if (uid == -1)
-            return Error($"Invalid UID: {uidStr}");
-        if (!ResourceUid.HasId(uid))
-            return Error($"UID not found: {uidStr}");
-        var path = ResourceUid.GetIdPath(uid);
-        return Success(new Dictionary { { "path", path }, { "uid", uidStr } });
-    }
 
     private Dictionary SearchText(Dictionary parms)
     {
@@ -255,7 +234,7 @@ public class ProjectHandler : BaseHandler
 
         var regexPattern = wholeWord ? $"\\b{Regex.Escape(query)}\\b" : Regex.Escape(query);
         var regexOptions = caseSensitive ? RegexOptions.Multiline : RegexOptions.Multiline | RegexOptions.IgnoreCase;
-        var regex = new Regex(regexPattern, regexOptions);
+        var regex = new Regex(regexPattern, regexOptions | RegexOptions.Compiled);
 
         var matches = new Godot.Collections.Array();
         foreach (var fileVariant in candidateFiles)

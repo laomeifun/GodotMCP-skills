@@ -77,13 +77,13 @@ public partial class RuntimeBridgeAutoload : Node
                     await SendResponseAsync(data, () => BuildStatus());
                     return;
                 case RuntimeBridgeProtocol.CommandGetSceneTree:
-                    await SendResponseAsync(data, () => GetSceneTree(data));
+                    SendResponseSync(data, () => GetSceneTree(data));
                     return;
                 case RuntimeBridgeProtocol.CommandGetNodeProperties:
-                    await SendResponseAsync(data, () => GetNodeProperties(data));
+                    SendResponseSync(data, () => GetNodeProperties(data));
                     return;
                 case RuntimeBridgeProtocol.CommandCaptureFrame:
-                    await SendResponseAsync(data, CaptureFrame);
+                    SendResponseSync(data, CaptureFrame);
                     return;
                 case RuntimeBridgeProtocol.CommandCaptureScreenshot:
                     await SendResponseAsync(data, CaptureScreenshotAsync);
@@ -92,34 +92,32 @@ public partial class RuntimeBridgeAutoload : Node
                     await SendResponseAsync(data, () => MonitorPropertyAsync(data));
                     return;
                 case RuntimeBridgeProtocol.CommandGetLogs:
-                    await SendResponseAsync(data, () => GetLogs(data));
+                    SendResponseSync(data, () => GetLogs(data));
                     return;
                 case RuntimeBridgeProtocol.CommandWatchSignal:
                     await SendResponseAsync(data, () => WatchSignalAsync(data));
                     return;
-                case RuntimeBridgeProtocol.CommandWatchNodeLifecycle:
-                    await SendResponseAsync(data, () => WatchNodeLifecycleAsync(data));
-                    return;
+
                 case RuntimeBridgeProtocol.CommandEvaluateExpression:
-                    await SendResponseAsync(data, () => EvaluateExpression(data));
+                    SendResponseSync(data, () => EvaluateExpression(data));
                     return;
                 case RuntimeBridgeProtocol.CommandInputKey:
                     await SendResponseAsync(data, () => ExecuteInputKeyAsync(ExtractPayload(data)));
                     return;
                 case RuntimeBridgeProtocol.CommandInputMouse:
-                    await SendResponseAsync(data, () => ExecuteInputMouseAsync(ExtractPayload(data)));
+                    SendResponseSync(data, () => ExecuteInputMouse(ExtractPayload(data)));
                     return;
                 case RuntimeBridgeProtocol.CommandInputAction:
                     await SendResponseAsync(data, () => ExecuteInputActionAsync(ExtractPayload(data)));
                     return;
                 case RuntimeBridgeProtocol.CommandInputText:
-                    await SendResponseAsync(data, () => ExecuteInputTextAsync(ExtractPayload(data)));
+                    SendResponseSync(data, () => ExecuteInputText(ExtractPayload(data)));
                     return;
                 case RuntimeBridgeProtocol.CommandInputSequence:
                     await SendResponseAsync(data, () => ExecuteInputSequenceAsync(ExtractPayload(data)));
                     return;
                 case RuntimeBridgeProtocol.CommandRecordMacro:
-                    await SendResponseAsync(data, () => RecordMacro(ExtractPayload(data)));
+                    SendResponseSync(data, () => RecordMacro(ExtractPayload(data)));
                     return;
                 case RuntimeBridgeProtocol.CommandPlaybackMacro:
                     await SendResponseAsync(data, () => PlaybackMacroAsync(ExtractPayload(data)));
@@ -136,7 +134,7 @@ public partial class RuntimeBridgeAutoload : Node
         }
     }
 
-    private async Task SendResponseAsync(GDArray data, Func<Dictionary> action)
+    private void SendResponseSync(GDArray data, Func<Dictionary> action)
     {
         var requestId = ExtractRequestId(data);
         if (string.IsNullOrWhiteSpace(requestId))
@@ -144,7 +142,6 @@ public partial class RuntimeBridgeAutoload : Node
 
         var responseData = action();
         SendResponse(requestId, true, responseData, string.Empty);
-        await Task.CompletedTask;
     }
 
     private async Task SendResponseAsync(GDArray data, Func<Task<Dictionary>> action)
@@ -498,7 +495,7 @@ public partial class RuntimeBridgeAutoload : Node
         if (image == null || image.IsEmpty())
             throw new InvalidOperationException("Failed to capture runtime viewport.");
 
-        var savePath = ProjectSettings.GlobalizePath($"user://mcp_game_screenshot_{Time.GetTicksMsec()}.png");
+        var savePath = ProjectSettings.GlobalizePath("user://mcp_game_screenshot_latest.png");
         var error = image.SavePng(savePath);
         if (error != Error.Ok)
             throw new InvalidOperationException($"Failed to save runtime screenshot: {error}");
@@ -615,76 +612,6 @@ public partial class RuntimeBridgeAutoload : Node
         };
     }
 
-    private async Task<Dictionary> WatchNodeLifecycleAsync(GDArray data)
-    {
-        var payload = ExtractPayload(data);
-        var nodePath = payload.TryGetValue("node_path", out var nodePathVariant) ? nodePathVariant.AsString() : string.Empty;
-        var durationMs = Math.Max(0, payload.TryGetValue("duration", out var durationVariant) ? durationVariant.AsInt32() : 1000);
-        var pollIntervalMs = Math.Clamp(payload.TryGetValue("poll_interval_ms", out var pollVariant) ? pollVariant.AsInt32() : 100, 16, 1000);
-        var maxSamples = Math.Clamp(payload.TryGetValue("max_samples", out var maxSamplesVariant) ? maxSamplesVariant.AsInt32() : 256, 1, 1024);
-
-        if (string.IsNullOrWhiteSpace(nodePath))
-            throw new InvalidOperationException("node_path is required.");
-
-        var samples = new GDArray();
-        var transitions = new GDArray();
-        bool? lastExists = null;
-        bool? lastInsideTree = null;
-        long lastInstanceId = -1;
-        var startedAt = Time.GetTicksMsec();
-        var endsAt = startedAt + (ulong)durationMs;
-
-        while (samples.Count < maxSamples)
-        {
-            var node = GetNodeOrNull(nodePath);
-            var exists = node != null;
-            var insideTree = node?.IsInsideTree() ?? false;
-            var instanceId = exists ? (long)node!.GetInstanceId() : -1;
-            var currentPath = exists ? node!.GetPath().ToString() : string.Empty;
-
-            var sample = new Dictionary
-            {
-                { "timestamp_ms", (long)Time.GetTicksMsec() },
-                { "exists", exists },
-                { "inside_tree", insideTree },
-                { "instance_id", instanceId },
-                { "current_path", currentPath },
-            };
-            samples.Add(sample);
-
-            if (lastExists != exists || lastInsideTree != insideTree || lastInstanceId != instanceId)
-            {
-                transitions.Add(new Dictionary
-                {
-                    { "timestamp_ms", (long)Time.GetTicksMsec() },
-                    { "exists", exists },
-                    { "inside_tree", insideTree },
-                    { "instance_id", instanceId },
-                    { "current_path", currentPath },
-                });
-            }
-
-            lastExists = exists;
-            lastInsideTree = insideTree;
-            lastInstanceId = instanceId;
-
-            if (Time.GetTicksMsec() >= endsAt)
-                break;
-
-            await ToSignal(GetTree().CreateTimer(pollIntervalMs / 1000.0), SceneTreeTimer.SignalName.Timeout);
-        }
-
-        return new Dictionary
-        {
-            { "node_path", nodePath },
-            { "duration_ms", durationMs },
-            { "poll_interval_ms", pollIntervalMs },
-            { "sample_count", samples.Count },
-            { "samples", samples },
-            { "transitions", transitions },
-            { "truncated", samples.Count >= maxSamples && Time.GetTicksMsec() < endsAt },
-        };
-    }
 
     private Dictionary RecordMacro(Dictionary payload)
     {
@@ -761,7 +688,7 @@ public partial class RuntimeBridgeAutoload : Node
         };
     }
 
-    private async Task<Dictionary> ExecuteInputMouseAsync(Dictionary payload)
+    private Dictionary ExecuteInputMouse(Dictionary payload)
     {
         if (!payload.TryGetValue("position", out var positionVariant) || positionVariant.VariantType != Variant.Type.Dictionary)
             throw new InvalidOperationException("position is required.");
@@ -807,7 +734,8 @@ public partial class RuntimeBridgeAutoload : Node
                 SendMouseButtonEvent(position, buttonIndex, false);
         }
 
-        await Task.CompletedTask;
+        }
+
         return new Dictionary
         {
             { "action", action },
@@ -848,7 +776,7 @@ public partial class RuntimeBridgeAutoload : Node
         };
     }
 
-    private async Task<Dictionary> ExecuteInputTextAsync(Dictionary payload)
+    private Dictionary ExecuteInputText(Dictionary payload)
     {
         var text = payload.TryGetValue("text", out var textVariant) ? textVariant.AsString() : string.Empty;
         foreach (var ch in text)
@@ -873,7 +801,8 @@ public partial class RuntimeBridgeAutoload : Node
             Input.ParseInputEvent(releaseEvent);
         }
 
-        await Task.CompletedTask;
+        }
+
         return new Dictionary
         {
             { "typed", text },

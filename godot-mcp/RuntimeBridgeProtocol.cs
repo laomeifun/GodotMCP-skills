@@ -23,7 +23,7 @@ public static class RuntimeBridgeProtocol
     public const string CommandMonitorProperty = "monitor_property";
     public const string CommandGetLogs = "get_logs";
     public const string CommandWatchSignal = "watch_signal";
-    public const string CommandWatchNodeLifecycle = "watch_node_lifecycle";
+
     public const string CommandEvaluateExpression = "evaluate_expression";
     public const string CommandInputKey = "input_key";
     public const string CommandInputMouse = "input_mouse";

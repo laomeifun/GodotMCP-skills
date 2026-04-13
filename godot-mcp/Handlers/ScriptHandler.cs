@@ -63,15 +63,6 @@ public class ScriptHandler : BaseHandler
         dir.ListDirEnd();
     }
 
-    private Dictionary ReadScript(Dictionary parms)
-    {
-        var pathError = ValidateProjectPath(parms["path"].AsString(), out var path, "path");
-        if (pathError != null) return pathError;
-
-        if (!FileAccess.FileExists(path)) return Error($"Script not found: {path}");
-        var content = FileAccess.GetFileAsString(path);
-        return Success(new Dictionary { { "path", path }, { "content", content } });
-    }
 
     private Dictionary CreateScript(Dictionary parms)
     {
@@ -119,83 +110,7 @@ public class ScriptHandler : BaseHandler
         return Success(new Dictionary { { "node_path", nodePath }, { "script_path", scriptPath } });
     }
 
-    private Dictionary DetachScript(Dictionary parms)
-    {
-        var nodePath = parms["node_path"].AsString();
-        var node = FindNode(nodePath);
-        if (node == null) return Error($"Node not found: {nodePath}");
-        node.SetScript(default(Variant));
-        return Success(new Dictionary { { "node_path", nodePath } });
-    }
 
-    private Dictionary FindReferences(Dictionary parms)
-    {
-        var pathError = ValidateProjectPath(GetOr(parms, "path", "res://").AsString(), out var path, "path");
-        if (pathError != null) return pathError;
 
-        var symbol = GetOr(parms, "symbol", string.Empty).AsString();
-        if (string.IsNullOrWhiteSpace(symbol))
-            return Error("symbol is required.");
-
-        var language = GetOr(parms, "language", "all").AsString();
-        var wholeWord = GetOr(parms, "whole_word", true).AsBool();
-        var caseSensitive = GetOr(parms, "case_sensitive", false).AsBool();
-        var maxResults = Math.Clamp(GetOr(parms, "max_results", 200).AsInt32(), 1, 2000);
-
-        var scripts = new Godot.Collections.Array();
-        CollectScripts(path, language, scripts);
-
-        var regexPattern = wholeWord ? $"\\b{Regex.Escape(symbol)}\\b" : Regex.Escape(symbol);
-        var regexOptions = caseSensitive ? RegexOptions.Multiline : RegexOptions.Multiline | RegexOptions.IgnoreCase;
-        var regex = new Regex(regexPattern, regexOptions);
-
-        var references = new Godot.Collections.Array();
-        foreach (var scriptVariant in scripts)
-        {
-            var scriptPath = scriptVariant.AsString();
-            if (!FileAccess.FileExists(scriptPath))
-                continue;
-
-            var content = FileAccess.GetFileAsString(scriptPath);
-            if (string.IsNullOrWhiteSpace(content))
-                continue;
-
-            var lines = content.Replace("\r\n", "\n").Split('\n');
-            for (int lineIndex = 0; lineIndex < lines.Length; lineIndex++)
-            {
-                foreach (Match match in regex.Matches(lines[lineIndex]))
-                {
-                    references.Add(new Dictionary
-                    {
-                        { "path", scriptPath },
-                        { "line", lineIndex + 1 },
-                        { "column", match.Index + 1 },
-                        { "match", match.Value },
-                        { "excerpt", lines[lineIndex].Trim() },
-                        { "language", scriptPath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ? "cs" : "gd" },
-                    });
-
-                    if (references.Count >= maxResults)
-                    {
-                        return Success(new Dictionary
-                        {
-                            { "symbol", symbol },
-                            { "references", references },
-                            { "count", references.Count },
-                            { "truncated", true },
-                        });
-                    }
-                }
-            }
-        }
-
-        return Success(new Dictionary
-        {
-            { "symbol", symbol },
-            { "references", references },
-            { "count", references.Count },
-            { "truncated", false },
-        });
-    }
 }
 #endif

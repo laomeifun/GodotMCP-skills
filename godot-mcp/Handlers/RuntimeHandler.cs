@@ -123,36 +123,6 @@ public class RuntimeHandler : BaseHandler
         });
     }
 
-    private async Task<Dictionary> RunSmokeCheckAsync()
-    {
-        await EnsureRuntimeCommandReadyAsync();
-
-        var status = RuntimeBridgeService.Instance.GetStatus();
-
-        var checks = new Godot.Collections.Array
-        {
-            new Dictionary { { "name", "runtime_bridge_connected" }, { "ok", true } },
-        };
-
-        var tree = await RuntimeBridgeService.Instance.RequestAsync(RuntimeBridgeProtocol.CommandGetSceneTree, new Dictionary { { "depth", 2 } }, 8000);
-        checks.Add(new Dictionary { { "name", "runtime_scene_tree" }, { "ok", true } });
-
-        var frame = await RuntimeBridgeService.Instance.RequestAsync(RuntimeBridgeProtocol.CommandCaptureFrame, new Dictionary(), 5000);
-        checks.Add(new Dictionary { { "name", "runtime_frame_capture" }, { "ok", true } });
-
-        var logs = RuntimeBridgeService.Instance.GetRecentLogs(20);
-        checks.Add(new Dictionary { { "name", "runtime_log_buffer" }, { "ok", logs.Count >= 0 } });
-
-        return Success(new Dictionary
-        {
-            { "passed", true },
-            { "checks", checks },
-            { "status", status },
-            { "scene_tree", tree },
-            { "frame", frame },
-            { "recent_logs", logs },
-        });
-    }
 
     private async Task<Dictionary> WatchSignalAsync(Dictionary parms)
     {
@@ -170,21 +140,6 @@ public class RuntimeHandler : BaseHandler
         return Success(await RuntimeBridgeService.Instance.RequestAsync(RuntimeBridgeProtocol.CommandWatchSignal, payload, timeoutMs));
     }
 
-    private async Task<Dictionary> WatchNodeLifecycleAsync(Dictionary parms)
-    {
-        await EnsureRuntimeCommandReadyAsync();
-
-        var duration = Math.Max(0, GetOr(parms, "duration", 1000).AsInt32());
-        var payload = new Dictionary
-        {
-            { "node_path", parms["node_path"].AsString() },
-            { "duration", duration },
-            { "poll_interval_ms", Math.Clamp(GetOr(parms, "poll_interval_ms", 100).AsInt32(), 16, 1000) },
-            { "max_samples", Math.Clamp(GetOr(parms, "max_samples", 256).AsInt32(), 1, 1024) },
-        };
-
-        return Success(await RuntimeBridgeService.Instance.RequestAsync(RuntimeBridgeProtocol.CommandWatchNodeLifecycle, payload, duration + 5000));
-    }
 
     private async Task<Dictionary> EvaluateExpressionAsync(Dictionary parms)
     {

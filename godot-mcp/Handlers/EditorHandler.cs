@@ -12,6 +12,9 @@ using Math = System.Math;
 
 public class EditorHandler : BaseHandler
 {
+    private static readonly Regex CSharpDiagnosticPattern = new Regex(@"(?<path>(?:res|user)://[^\(\s]+)\((?<line>\d+),(?<column>\d+)\):\s*(?<severity>error|warning)\s*(?<code>[A-Za-z]{1,4}\d+)?\s*:?\s*(?<message>.+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex GenericDiagnosticPattern = new Regex(@"(?<path>(?:res|user)://[^:\s]+):(?<line>\d+)(?::(?<column>\d+))?:\s*(?<severity>error|warning)\s*:?\s*(?<message>.+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private static readonly Godot.Collections.Array SharedLog = new();
     private const int MaxLogEntries = 500;
 
@@ -23,7 +26,7 @@ public class EditorHandler : BaseHandler
         {
             "screenshot" => TakeScreenshot(parms),
             "get_errors" => GetErrors(parms),
-            "get_compilation_errors" => GetCompilationErrors(parms),
+
             "execute_gdscript" => ExecuteGdScript(parms),
             "execute_csharp" => ExecuteCSharp(parms),
             "reload_project" => ReloadProject(),
@@ -64,7 +67,7 @@ public class EditorHandler : BaseHandler
             image.Resize((int)(image.GetWidth() * scale), (int)(image.GetHeight() * scale));
         }
 
-        var savePath = ProjectSettings.GlobalizePath($"user://mcp_screenshot_{Time.GetTicksMsec()}.jpg");
+        var savePath = ProjectSettings.GlobalizePath("user://mcp_screenshot_latest.jpg");
         var err = image.SaveJpg(savePath, 0.85f);
         if (err != Godot.Error.Ok) return Error($"Failed to save screenshot: {err}");
         return Success(new Dictionary { { "path", savePath }, { "format", "jpeg" } });
@@ -86,7 +89,12 @@ public class EditorHandler : BaseHandler
         for (int i = startIdx; i < SharedLog.Count; i++)
             errors.Add(SharedLog[i]);
 
-        var diagnostics = CollectCompilationDiagnostics(errors, string.Empty);
+        var includeCompilation = GetOr(parms, "include_compilation", true).AsBool();
+        var language = GetOr(parms, "language", string.Empty).AsString();
+        Godot.Collections.Array diagnostics = new();
+        if (includeCompilation)
+            diagnostics = CollectCompilationDiagnostics(errors, language);
+
         return Success(new Dictionary
         {
             { "errors", errors },
@@ -97,24 +105,7 @@ public class EditorHandler : BaseHandler
         });
     }
 
-    private Dictionary GetCompilationErrors(Dictionary parms)
-    {
-        var count = GetOr(parms, "count", 100).AsInt32();
-        var language = GetOr(parms, "language", string.Empty).AsString();
-        var errors = new Godot.Collections.Array();
-        var startIdx = Math.Max(0, SharedLog.Count - count);
-        for (int i = startIdx; i < SharedLog.Count; i++)
-            errors.Add(SharedLog[i]);
 
-        var diagnostics = CollectCompilationDiagnostics(errors, language);
-        return Success(new Dictionary
-        {
-            { "diagnostics", diagnostics },
-            { "count", diagnostics.Count },
-            { "error_count", CountDiagnosticsBySeverity(diagnostics, "error") },
-            { "warning_count", CountDiagnosticsBySeverity(diagnostics, "warning") },
-        });
-    }
 
     public static void RecordLog(string message, string type = "error", string source = "editor", string code = "", Dictionary? context = null)
     {
@@ -309,19 +300,18 @@ public class EditorHandler : BaseHandler
         if (string.IsNullOrWhiteSpace(message))
             return null;
 
-        var csharpPattern = new Regex(@"(?<path>(?:res|user)://[^\(\s]+)\((?<line>\d+),(?<column>\d+)\):\s*(?<severity>error|warning)\s*(?<code>[A-Za-z]{1,4}\d+)?\s*:?\s*(?<message>.+)", RegexOptions.IgnoreCase);
-        var genericPattern = new Regex(@"(?<path>(?:res|user)://[^:\s]+):(?<line>\d+)(?::(?<column>\d+))?:\s*(?<severity>error|warning)\s*:?\s*(?<message>.+)", RegexOptions.IgnoreCase);
+
 
         Match match;
         string language = InferLanguageFromPath(message);
-        if (csharpPattern.IsMatch(message))
+        if (CSharpDiagnosticPattern.IsMatch(message))
         {
-            match = csharpPattern.Match(message);
+            match = CSharpDiagnosticPattern.Match(message);
             language = "cs";
         }
-        else if (genericPattern.IsMatch(message))
+        else if (GenericDiagnosticPattern.IsMatch(message))
         {
-            match = genericPattern.Match(message);
+            match = GenericDiagnosticPattern.Match(message);
         }
         else if (message.Contains("CS", StringComparison.OrdinalIgnoreCase) || source.Contains("csharp", StringComparison.OrdinalIgnoreCase))
         {
