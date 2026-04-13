@@ -171,10 +171,180 @@ public static class BridgeSerialization
             return value;
 
         var dict = value.AsGodotDictionary();
-        if (!dict.TryGetValue("type", out var typeVariant) || !dict.TryGetValue("raw_value", out var rawValue))
+
+        // 优先使用显式包装格式 {"type": "vector3", "raw_value": {...}}
+        if (dict.TryGetValue("type", out var typeVariant) && dict.TryGetValue("raw_value", out var rawValue))
+            return DeserializeVariant(rawValue, typeVariant.AsString());
+
+        // 当没有包装时，根据键名结构自动推断 Godot 类型
+        var inferred = TryInferVariantFromDict(dict);
+        if (inferred.HasValue)
+            return inferred.Value;
+
+        return value;
+    }
+
+    /// <summary>
+    /// 根据字典键名结构自动推断 Godot 复合类型。
+    /// 支持 Vector2/2I/3/3I/4/4I、Color、Quaternion、Plane、Rect2/2I、Transform2D/3D、Basis。
+    /// </summary>
+    private static Variant? TryInferVariantFromDict(Dictionary dict)
+    {
+        var keys = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in dict.Keys)
+            keys.Add(key.AsString());
+
+        try
+        {
+            // Color: {r, g, b} 或 {r, g, b, a}（也可单独用 html 键）
+            if (keys.Contains("r") && keys.Contains("g") && keys.Contains("b"))
+                return DeserializeColor(dict);
+
+            // Plane: {normal, d}
+            if (keys.Contains("normal") && keys.Contains("d") && keys.Count == 2)
+            {
+                var normal = DeserializeVector3(dict["normal"].AsGodotDictionary());
+                return new Plane(normal, GetSingle(dict, "d"));
+            }
+
+            // Rect2 / Rect2I: {position, size}
+            if (keys.Contains("position") && keys.Contains("size") && keys.Count == 2)
+            {
+                var posDict = dict["position"].AsGodotDictionary();
+                var sizeDict = dict["size"].AsGodotDictionary();
+                if (IsIntegerDict(posDict) && IsIntegerDict(sizeDict))
+                    return DeserializeRect2I(dict);
+                return DeserializeRect2(dict);
+            }
+
+            // Quaternion: {x, y, z, w} — 必须在 Vector4 之前检查，
+            // 因为键完全相同，但 Quaternion 比 Vector4 更常见于旋转属性。
+            // 这里默认推断为 Quaternion；如果需要 Vector4，用户应使用包装格式。
+            if (keys.Contains("x") && keys.Contains("y") && keys.Contains("z") && keys.Contains("w"))
+            {
+                // 如果所有值都是整数类型，推断为 Vector4I
+                if (IsIntegerDict(dict))
+                    return DeserializeVector4I(dict);
+                return DeserializeQuaternion(dict);
+            }
+
+            // Vector3 / Vector3I: {x, y, z}
+            if (keys.Contains("x") && keys.Contains("y") && keys.Contains("z"))
+            {
+                if (IsIntegerDict(dict))
+                    return DeserializeVector3I(dict);
+                return DeserializeVector3(dict);
+            }
+
+            // Vector2 / Vector2I: {x, y}
+            if (keys.Contains("x") && keys.Contains("y") && keys.Count == 2)
+            {
+                if (IsIntegerDict(dict))
+                    return DeserializeVector2I(dict);
+                return DeserializeVector2(dict);
+            }
+        }
+        catch
+        {
+            // 推断失败时回退，让原始值直接传入
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 判断字典中的数值是否全部为整数（用于区分 Vector3 和 Vector3I 等）。
+    /// </summary>
+    private static bool IsIntegerDict(Dictionary dict)
+    {
+        foreach (var key in dict.Keys)
+        {
+            var v = dict[key];
+            if (v.VariantType == Variant.Type.Float || v.VariantType == Variant.Type.String)
+                return false;
+            if (v.VariantType == Variant.Type.Dictionary || v.VariantType == Variant.Type.Array)
+                continue; // 跳过嵌套结构
+        }
+        return true;
+    }
+
+    private static Quaternion DeserializeQuaternion(Dictionary value) => new(
+        GetSingle(value, "x"),
+        GetSingle(value, "y"),
+        GetSingle(value, "z"),
+        GetSingle(value, "w")
+    );
+
+    /// <summary>
+    /// 如果推断/传入的值类型与属性实际类型不匹配，尝试将值强制转换为目标类型。
+    /// 例如：传入 Dictionary{"x","y","z"} 但属性是 Vector3 → 转为 Vector3。
+    /// 传入 Quaternion 但属性是 Vector4 → 转为 Vector4（键结构相同但语义不同）。
+    /// </summary>
+    public static Variant CoerceToPropertyType(Variant value, Variant targetExample)
+    {
+        // 类型已经匹配，不需要转换
+        if (value.VariantType == targetExample.VariantType)
             return value;
 
-        return DeserializeVariant(rawValue, typeVariant.AsString());
+        // 如果值仍然是 Dictionary（TryInferVariantFromDict 未能推断），
+        // 根据目标类型再试一次精确反序列化
+        if (value.VariantType == Variant.Type.Dictionary)
+        {
+            var dict = value.AsGodotDictionary();
+            try
+            {
+                return targetExample.VariantType switch
+                {
+                    Variant.Type.Vector2 => DeserializeVector2(dict),
+                    Variant.Type.Vector2I => DeserializeVector2I(dict),
+                    Variant.Type.Vector3 => DeserializeVector3(dict),
+                    Variant.Type.Vector3I => DeserializeVector3I(dict),
+                    Variant.Type.Vector4 => DeserializeVector4(dict),
+                    Variant.Type.Vector4I => DeserializeVector4I(dict),
+                    Variant.Type.Color => DeserializeColor(dict),
+                    Variant.Type.Rect2 => DeserializeRect2(dict),
+                    Variant.Type.Rect2I => DeserializeRect2I(dict),
+                    Variant.Type.Quaternion => DeserializeQuaternion(dict),
+                    _ => value,
+                };
+            }
+            catch
+            {
+                return value;
+            }
+        }
+
+        // 处理自动推断类型错误的情况（如 Quaternion↔Vector4）
+        try
+        {
+            // Quaternion → Vector4
+            if (value.VariantType == Variant.Type.Quaternion && targetExample.VariantType == Variant.Type.Vector4)
+            {
+                var q = value.AsQuaternion();
+                return new Vector4(q.X, q.Y, q.Z, q.W);
+            }
+
+            // Vector4 → Quaternion
+            if (value.VariantType == Variant.Type.Vector4 && targetExample.VariantType == Variant.Type.Quaternion)
+            {
+                var v = value.AsVector4();
+                return new Quaternion(v.X, v.Y, v.Z, v.W);
+            }
+
+            // int → float
+            if (value.VariantType == Variant.Type.Int && targetExample.VariantType == Variant.Type.Float)
+                return value.AsDouble();
+
+            // float → int
+            if (value.VariantType == Variant.Type.Float && targetExample.VariantType == Variant.Type.Int)
+                return value.AsInt64();
+        }
+        catch
+        {
+            // 转换失败时回退
+        }
+
+        return value;
     }
 
     private static Dictionary SerializeVector2(Vector2 value) => new()

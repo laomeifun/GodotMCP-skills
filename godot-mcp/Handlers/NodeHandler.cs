@@ -145,6 +145,10 @@ public class NodeHandler : BaseHandler
         var node = FindNode(nodePath);
         if (node == null) return Error($"Node not found: {nodePath}");
         var oldValue = node.Get(property);
+
+        // 当推断出的类型与属性的实际类型不匹配时，尝试按目标类型重新转换
+        value = BridgeSerialization.CoerceToPropertyType(value, oldValue);
+
         var undoRedo = GetUndoRedo();
         undoRedo.CreateAction("Set Property");
         undoRedo.AddDoProperty(node, property, value);
@@ -310,6 +314,7 @@ public class NodeHandler : BaseHandler
                         var property = GetOr(operation, "property", string.Empty).AsString();
                         var value = BridgeSerialization.UnwrapTransportValue(operation["value"]);
                         var oldValue = node.Get(property);
+                        value = BridgeSerialization.CoerceToPropertyType(value, oldValue);
                         undoRedo.AddDoProperty(node, property, value);
                         undoRedo.AddUndoProperty(node, property, oldValue);
                         results.Add(new Dictionary { { "type", operationType }, { "property", property }, { "target", node.Name } });
