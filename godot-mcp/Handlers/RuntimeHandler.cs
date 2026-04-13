@@ -35,9 +35,7 @@ public class RuntimeHandler : BaseHandler
             "monitor_property" => await MonitorPropertyAsync(parms),
             "wait_until_ready" => await WaitUntilReadyAsync(parms),
             "get_logs" => GetLogs(parms),
-            "run_smoke_check" => await RunSmokeCheckAsync(),
             "watch_signal" => await WatchSignalAsync(parms),
-            "watch_node_lifecycle" => await WatchNodeLifecycleAsync(parms),
             "evaluate_expression" => await EvaluateExpressionAsync(parms),
             _ => Error($"Unknown runtime command: {command}")
         };

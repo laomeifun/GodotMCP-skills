@@ -21,8 +21,6 @@ public class ProjectHandler : BaseHandler
             "list_files" => ListFiles(parms),
             "read_file" => ReadFile(parms),
             "write_file" => WriteFile(parms),
-            "get_uid" => GetUid(parms),
-            "get_path_from_uid" => GetPathFromUid(parms),
             "search_text" => SearchText(parms),
             "get_dependencies" => GetDependencies(parms),
             "find_unused_assets" => FindUnusedAssets(parms),
@@ -236,10 +234,24 @@ public class ProjectHandler : BaseHandler
         var caseSensitive = GetOr(parms, "case_sensitive", false).AsBool();
         var wholeWord = GetOr(parms, "whole_word", false).AsBool();
         var maxResults = Math.Clamp(GetOr(parms, "max_results", 200).AsInt32(), 1, 2000);
+        var scope = GetOr(parms, "scope", "all").AsString();
+        var scriptsOnly = string.Equals(scope, "scripts", StringComparison.OrdinalIgnoreCase);
 
         var candidateFiles = new Godot.Collections.Array();
         bool truncated = false;
-        ListFilesRecursive(path, filter, recursive, candidateFiles, ref truncated, textOnlyWhenNoFilter: true);
+
+        if (scriptsOnly)
+        {
+            // 脚本专用搜索：只搜索 .gd/.cs 文件
+            var scriptFilter = string.IsNullOrWhiteSpace(filter) ? string.Empty : filter;
+            ListFilesRecursive(path, scriptFilter, recursive, candidateFiles, ref truncated, textOnlyWhenNoFilter: false, filePredicate: (fileName) =>
+                fileName.EndsWith(".gd", StringComparison.OrdinalIgnoreCase) ||
+                fileName.EndsWith(".cs", StringComparison.OrdinalIgnoreCase));
+        }
+        else
+        {
+            ListFilesRecursive(path, filter, recursive, candidateFiles, ref truncated, textOnlyWhenNoFilter: true);
+        }
 
         var regexPattern = wholeWord ? $"\\b{Regex.Escape(query)}\\b" : Regex.Escape(query);
         var regexOptions = caseSensitive ? RegexOptions.Multiline : RegexOptions.Multiline | RegexOptions.IgnoreCase;
@@ -261,14 +273,22 @@ public class ProjectHandler : BaseHandler
             {
                 foreach (Match match in regex.Matches(lines[lineIndex]))
                 {
-                    matches.Add(new Dictionary
+                    var matchEntry = new Dictionary
                     {
                         { "path", filePath },
                         { "line", lineIndex + 1 },
                         { "column", match.Index + 1 },
                         { "match", match.Value },
                         { "excerpt", lines[lineIndex].Trim() },
-                    });
+                    };
+
+                    // 脚本搜索模式自动附加 language 字段
+                    if (scriptsOnly)
+                    {
+                        matchEntry["language"] = filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ? "cs" : "gd";
+                    }
+
+                    matches.Add(matchEntry);
 
                     if (matches.Count >= maxResults)
                     {

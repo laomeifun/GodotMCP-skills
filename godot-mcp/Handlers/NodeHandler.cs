@@ -14,17 +14,9 @@ public class NodeHandler : BaseHandler
     {
         return command switch
         {
-            "add" => AddNode(parms),
             "delete" => DeleteNode(parms),
-            "rename" => RenameNode(parms),
             "duplicate" => DuplicateNode(parms),
-            "move" => MoveNode(parms),
-            "get_properties" => GetProperties(parms),
             "set_property" => SetProperty(parms),
-            "get_signals" => GetSignals(parms),
-            "connect_signal" => ConnectSignal(parms),
-            "disconnect_signal" => DisconnectSignal(parms),
-            "get_children" => GetChildren(parms),
             "inspect_deep" => InspectDeep(parms),
             "batch_update" => BatchUpdate(parms),
             _ => Error($"Unknown node command: {command}")
@@ -230,10 +222,11 @@ public class NodeHandler : BaseHandler
 
         var depth = Math.Clamp(GetOr(parms, "depth", 2).AsInt32(), 0, 6);
         var includeChildProperties = GetOr(parms, "include_child_properties", false).AsBool();
+        var requestedProperties = parms.ContainsKey("property_names") ? parms["property_names"].AsGodotArray() : null;
         var propertyOffset = Math.Max(0, GetOr(parms, "property_offset", 0).AsInt32());
         var propertyLimit = Math.Clamp(GetOr(parms, "property_limit", 200).AsInt32(), 1, 500);
 
-        var propertyResult = BuildPropertyResult(node, null, propertyOffset, propertyLimit, editorOnly: true);
+        var propertyResult = BuildPropertyResult(node, requestedProperties, propertyOffset, propertyLimit, editorOnly: true);
         return Success(new Dictionary
         {
             { "node", BridgeSerialization.BuildNodeSummary(node, includeGroups: true) },

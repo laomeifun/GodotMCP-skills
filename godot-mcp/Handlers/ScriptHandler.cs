@@ -16,13 +16,9 @@ public class ScriptHandler : BaseHandler
     {
         return command switch
         {
-            "list" => ListScripts(parms),
-            "read" => ReadScript(parms),
             "create" => CreateScript(parms),
             "edit" => EditScript(parms),
             "attach" => AttachScript(parms),
-            "detach" => DetachScript(parms),
-            "find_references" => FindReferences(parms),
             _ => Error($"Unknown script command: {command}")
         };
     }

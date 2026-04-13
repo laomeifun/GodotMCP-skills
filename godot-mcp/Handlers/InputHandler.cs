@@ -25,9 +25,7 @@ public class InputHandler : BaseHandler
             "mouse" => Success(await RuntimeBridgeService.Instance.RequestAsync(RuntimeBridgeProtocol.CommandInputMouse, BuildMousePayload(parms), 5000)),
             "action" => Success(await RuntimeBridgeService.Instance.RequestAsync(RuntimeBridgeProtocol.CommandInputAction, BuildActionPayload(parms), GetActionTimeout(parms))),
             "text" => Success(await RuntimeBridgeService.Instance.RequestAsync(RuntimeBridgeProtocol.CommandInputText, BuildTextPayload(parms), 5000)),
-            "sequence" => Success(await RuntimeBridgeService.Instance.RequestAsync(RuntimeBridgeProtocol.CommandInputSequence, BuildSequencePayload(parms), GetSequenceTimeout(parms))),
-            "record_macro" => Success(await RuntimeBridgeService.Instance.RequestAsync(RuntimeBridgeProtocol.CommandRecordMacro, BuildMacroRecordPayload(parms), 5000)),
-            "playback_macro" => Success(await RuntimeBridgeService.Instance.RequestAsync(RuntimeBridgeProtocol.CommandPlaybackMacro, BuildMacroPlaybackPayload(parms), GetMacroPlaybackTimeout(parms))),
+            "sequence" => await HandleSequenceAsync(parms),
             _ => Error($"Unknown input command: {command}")
         };
     }
@@ -59,22 +57,36 @@ public class InputHandler : BaseHandler
         { "text", parms["text"].AsString() },
     };
 
-    private static Dictionary BuildSequencePayload(Dictionary parms) => new()
+    private async Task<Dictionary> HandleSequenceAsync(Dictionary parms)
     {
-        { "steps", parms["steps"] },
-    };
+        // 回放已有宏
+        var replay = GetOr(parms, "replay", string.Empty).AsString();
+        if (!string.IsNullOrWhiteSpace(replay))
+        {
+            var playbackPayload = new Dictionary
+            {
+                { "name", replay },
+                { "loop_count", Math.Clamp(GetOr(parms, "loop_count", 1).AsInt32(), 1, 32) },
+            };
+            return Success(await RuntimeBridgeService.Instance.RequestAsync(RuntimeBridgeProtocol.CommandPlaybackMacro, playbackPayload, GetMacroPlaybackTimeout(parms)));
+        }
 
-    private static Dictionary BuildMacroRecordPayload(Dictionary parms) => new()
-    {
-        { "name", parms["name"].AsString() },
-        { "steps", parms["steps"] },
-    };
+        // 保存为命名宏
+        var saveAs = GetOr(parms, "save_as", string.Empty).AsString();
+        if (!string.IsNullOrWhiteSpace(saveAs))
+        {
+            var recordPayload = new Dictionary
+            {
+                { "name", saveAs },
+                { "steps", parms["steps"] },
+            };
+            return Success(await RuntimeBridgeService.Instance.RequestAsync(RuntimeBridgeProtocol.CommandRecordMacro, recordPayload, 5000));
+        }
 
-    private static Dictionary BuildMacroPlaybackPayload(Dictionary parms) => new()
-    {
-        { "name", parms["name"].AsString() },
-        { "loop_count", Math.Clamp(GetOr(parms, "loop_count", 1).AsInt32(), 1, 32) },
-    };
+        // 普通序列执行
+        var sequencePayload = new Dictionary { { "steps", parms["steps"] } };
+        return Success(await RuntimeBridgeService.Instance.RequestAsync(RuntimeBridgeProtocol.CommandInputSequence, sequencePayload, GetSequenceTimeout(parms)));
+    }
 
     private static int GetKeyTimeout(Dictionary parms) => Math.Max(5000, GetOr(parms, "duration", 0).AsInt32() + 5000);
 

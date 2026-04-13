@@ -89,17 +89,6 @@ registerGodotTool("runtime_get_recent_logs", "Get recent runtime bridge events a
   },
 });
 
-registerGodotTool("runtime_run_smoke_check", "Run a Godot-side runtime bridge smoke check that validates live status, scene tree access, frame metrics, and runtime log buffering.", "runtime", "run_smoke_check", undefined, {
-  outputSchema: {
-    passed: z.boolean(),
-    checks: z.array(z.object({}).passthrough()),
-    status: z.record(z.unknown()),
-    scene_tree: z.record(z.unknown()),
-    frame: z.record(z.unknown()),
-    recent_logs: z.array(z.object({}).passthrough()),
-  },
-});
-
 registerGodotTaskTool("runtime_monitor_property", "Sample a runtime property over time and return the collected values. This tool is task-capable for longer captures.", "runtime", "monitor_property", {
   node_path: z.string().describe("Node path in the running game"),
   property: z.string().describe("Property name to monitor"),
@@ -157,28 +146,6 @@ registerGodotTaskTool("runtime_watch_signal", "Watch a runtime node signal for a
     event_count: z.number(),
     truncated: z.boolean(),
     events: z.array(z.object({}).passthrough()),
-  },
-});
-
-registerGodotTaskTool("runtime_watch_node_lifecycle", "Sample runtime node existence and in-tree state over time to observe lifecycle transitions.", "runtime", "watch_node_lifecycle", {
-  node_path: z.string().describe("Runtime node path to monitor"),
-  duration: z.number().default(1000).describe("Monitoring duration in ms"),
-  poll_interval_ms: z.number().default(100).describe("Polling interval between samples"),
-  max_samples: z.number().default(256).describe("Maximum number of lifecycle samples to keep"),
-}, {
-  taskSupport: "optional",
-  timeoutMs: (params) => {
-    const duration = typeof params.duration === "number" ? params.duration : 1000;
-    return duration + 5000;
-  },
-  outputSchema: {
-    node_path: z.string(),
-    duration_ms: z.number(),
-    poll_interval_ms: z.number(),
-    sample_count: z.number(),
-    samples: z.array(z.object({}).passthrough()),
-    transitions: z.array(z.object({}).passthrough()),
-    truncated: z.boolean(),
   },
 });
 

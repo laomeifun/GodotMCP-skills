@@ -44,42 +44,23 @@ registerGodotTool("input_text", "Type a text string character by character.", "i
     length: z.number(),
   },
 });
-registerGodotTool("input_sequence", "Execute a timed sequence of input actions.", "input", "sequence", {
+registerGodotTool("input_sequence", "Execute a timed sequence of input actions. Can also save sequences as named macros and replay them.", "input", "sequence", {
   steps: z.array(z.object({
     type: z.enum(["key", "mouse", "action", "text", "wait"]).describe("Input type"),
     params: z.record(z.unknown()).describe("Parameters for the input"),
     delay_ms: z.number().default(0).describe("Delay in ms before next step"),
-  })).describe("Sequence of input steps"),
+  })).optional().describe("Sequence of input steps (required unless replaying a macro)"),
+  save_as: z.string().optional().describe("Save this sequence as a named macro for later replay"),
+  replay: z.string().optional().describe("Replay a previously saved macro by name (steps not required when set)"),
+  loop_count: z.number().default(1).describe("How many times to replay (only used with replay)"),
 }, {
   outputSchema: {
-    steps_queued: z.number(),
-    total_duration_ms: z.number(),
-  },
-});
-
-registerGodotTool("input_record_macro", "Store a reusable named input macro as a sequence of steps.", "input", "record_macro", {
-  name: z.string().describe("Macro name"),
-  steps: z.array(z.object({
-    type: z.enum(["key", "mouse", "action", "text", "wait"]),
-    params: z.record(z.unknown()),
-    delay_ms: z.number().default(0),
-  })).describe("Sequence of steps to store"),
-}, {
-  outputSchema: {
-    name: z.string(),
-    step_count: z.number(),
-    stored_macro_count: z.number(),
-  },
-});
-
-registerGodotTool("input_playback_macro", "Replay a previously stored input macro through the runtime bridge.", "input", "playback_macro", {
-  name: z.string().describe("Macro name to replay"),
-  loop_count: z.number().default(1).describe("How many times to replay the macro"),
-}, {
-  outputSchema: {
-    name: z.string(),
-    loop_count: z.number(),
-    step_count: z.number(),
-    executed_steps: z.number(),
+    steps_queued: z.number().optional(),
+    total_duration_ms: z.number().optional(),
+    name: z.string().optional(),
+    step_count: z.number().optional(),
+    loop_count: z.number().optional(),
+    executed_steps: z.number().optional(),
+    stored_macro_count: z.number().optional(),
   },
 });

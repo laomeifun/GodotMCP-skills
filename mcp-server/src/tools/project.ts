@@ -43,8 +43,8 @@ registerGodotTool(
   }
 );
 
-registerGodotTool("project_read_file", "Read the contents of a project file.", "project", "read_file", {
-  path: z.string().describe("Resource path (e.g. 'res://scenes/Player.tscn')"),
+registerGodotTool("project_read_file", "Read the contents of a project file (scripts, scenes, resources, etc).", "project", "read_file", {
+  path: z.string().describe("Resource path (e.g. 'res://scenes/Player.tscn' or 'res://scripts/Player.cs')"),
 }, {
   outputSchema: {
     path: z.string(),
@@ -61,25 +61,7 @@ registerGodotTool("project_write_file", "Write or create a file in the project."
   },
 });
 
-registerGodotTool("project_get_uid", "Convert a resource path to its UID.", "project", "get_uid", {
-  path: z.string().describe("Resource path (e.g. 'res://scenes/Player.tscn')"),
-}, {
-  outputSchema: {
-    uid: z.string(),
-    path: z.string(),
-  },
-});
-
-registerGodotTool("project_get_path_from_uid", "Convert a UID back to a resource path.", "project", "get_path_from_uid", {
-  uid: z.string().describe("Resource UID string"),
-}, {
-  outputSchema: {
-    path: z.string(),
-    uid: z.string(),
-  },
-});
-
-registerGodotTool("project_search_text", "Search text across project files and return structured matches.", "project", "search_text", {
+registerGodotTool("project_search_text", "Search text across project files and return structured matches. Use scope='scripts' to search only script files (.gd/.cs) with automatic language detection.", "project", "search_text", {
   path: z.string().default("res://").describe("Directory path to search under"),
   query: z.string().describe("Plain text query to search for"),
   recursive: z.boolean().default(true).describe("Whether to search subdirectories recursively"),
@@ -87,6 +69,7 @@ registerGodotTool("project_search_text", "Search text across project files and r
   case_sensitive: z.boolean().default(false).describe("Whether the search is case sensitive"),
   whole_word: z.boolean().default(false).describe("Whether to only match whole words"),
   max_results: z.number().default(200).describe("Maximum number of matches to return"),
+  scope: z.enum(["all", "scripts"]).default("all").describe("Search scope: 'all' searches all text files, 'scripts' searches only .gd/.cs files"),
 }, {
   outputSchema: {
     query: z.string(),
@@ -96,6 +79,7 @@ registerGodotTool("project_search_text", "Search text across project files and r
       column: z.number(),
       match: z.string(),
       excerpt: z.string(),
+      language: z.string().optional(),
     })),
     count: z.number(),
     truncated: z.boolean(),
